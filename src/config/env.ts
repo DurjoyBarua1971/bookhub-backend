@@ -7,4 +7,7 @@ export const {
   NODE_ENV,
   SERVER_URL,
   JWT_SECRET,
+  CLOUDINARY_CLOUD_NAME,
+  CLOUDINARY_API_KEY,
+  CLOUDINARY_API_SECRET,
 } = process.env;

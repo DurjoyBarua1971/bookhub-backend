@@ -3,8 +3,9 @@ import User from "./userModel";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { JWT_SECRET } from "../../config/env";
-import { userRegisterSchema } from "./userValidation";
+import { userLoginSchema, userRegisterSchema } from "./userValidation";
 import { z } from "zod";
+import { defineError } from "../../config/helper";
 
 export const createUser = async (
   req: Request,
@@ -13,11 +14,8 @@ export const createUser = async (
 ) => {
   try {
     // ✅ Check if the body is an empty object
-    if (Object.keys(req.body).length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Request body cannot be empty",
-      });
+    if (!req.body || Object.keys(req.body).length === 0) {
+      throw defineError("Request body cannot be empty", 400);
     }
 
     // ✅ Validate with Zod
@@ -27,10 +25,7 @@ export const createUser = async (
     // ✅ Check for duplicate email
     const existingUser = await User.findOne({ email });
     if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        message: "Email already exists",
-      });
+      throw defineError("Email already exists", 409);
     }
 
     // ✅ Hash password and save user
@@ -43,8 +38,7 @@ export const createUser = async (
       password: hashedPassword,
     });
 
-    const { password:fk, ...userResponse } = newUser.toObject();
-
+    const { password: fk, ...userResponse } = newUser.toObject();
 
     // ✅ Success response
     res.status(201).json({
@@ -53,7 +47,6 @@ export const createUser = async (
       data: userResponse,
     });
   } catch (error) {
-    // ✅ Zod error handling
     if (error instanceof z.ZodError) {
       const formattedErrors = error.issues.reduce((acc, issue) => {
         const field = issue.path[0] as string;
@@ -68,11 +61,9 @@ export const createUser = async (
       });
     }
 
-    // ✅ Let global error handler handle unexpected errors
     next(error);
   }
 };
-
 
 export const loginUser = async (
   req: Request,
@@ -80,36 +71,26 @@ export const loginUser = async (
   next: NextFunction
 ) => {
   try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      const error = new Error("Email and password are required") as Error & {
-        statusCode?: number;
-      };
-      error.statusCode = 400;
-      throw error;
+    if (!req.body || Object.keys(req.body).length === 0) {
+      throw defineError("Request body cannot be empty", 400);
     }
 
+    const parsedData = userLoginSchema.parse(req.body);
+    const { email, password } = parsedData;
+
     const user = await User.findOne({ email }).select("+password");
+
     if (!user) {
-      const error = new Error("Invalid email or password") as Error & {
-        statusCode?: number;
-      };
-      error.statusCode = 401;
-      throw error;
+      throw defineError("Invalid email or password", 401);
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      const error = new Error("Invalid email or password") as Error & {
-        statusCode?: number;
-      };
-      error.statusCode = 401;
-      throw error;
+      throw defineError("Invalid email or password", 401);
     }
 
     if (!JWT_SECRET) {
-      throw new Error("JWT_SECRET is not defined in environment variables");
+      throw defineError("JWT_SECRET is not defined", 500);
     }
 
     const token = jwt.sign(
@@ -125,9 +106,26 @@ export const loginUser = async (
     res.status(200).json({
       success: true,
       message: "Login successful",
-      data: { _id: user._id, name: user.name, email: user.email },
+      data: {
+        token,
+        name: user.name,
+        email: user.email,
+      },
     });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      const formattedErrors = error.issues.reduce((acc, issue) => {
+        const field = issue.path[0] as string;
+        acc[field] = issue.message;
+        return acc;
+      }, {} as Record<string, string>);
+
+      return res.status(400).json({
+        success: false,
+        message: "Validation failed",
+        errors: formattedErrors,
+      });
+    }
     next(error);
   }
 };
