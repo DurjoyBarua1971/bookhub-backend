@@ -24,7 +24,7 @@ const authorize = async (req: Request, res: Response, next: NextFunction) => {
     }
 
     if (!token) {
-      return defineError("No token provided", 401);
+      throw defineError("No token provided", 401);
     }
 
     const decoded = jwt.verify(token, JWT_SECRET as string);
