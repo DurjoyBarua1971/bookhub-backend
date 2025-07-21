@@ -6,7 +6,7 @@ import cloudinary from "../../config/cloudinary";
 import path from "node:path";
 import fs from "node:fs";
 import Book from "./bookModel";
-
+import { AuthRequest } from "../../middleware/auth.middleware";
 
 export const createBook = async (
   req: Request,
@@ -14,7 +14,6 @@ export const createBook = async (
   next: NextFunction
 ) => {
   try {
-
     req.body = JSON.parse(req.body.data || "{}");
     if (!req.body || Object.keys(req.body).length === 0) {
       throw defineError("Request body cannot be empty", 400);
@@ -40,22 +39,22 @@ export const createBook = async (
       format: coverImageFormat,
     });
 
+    const _req = req as AuthRequest;
+
     const newBook = await Book.create({
       ...parsedData,
       coverImageUrl: uploadResult.secure_url,
-      addedBy: '6878e152c81d7f8104ad7516'
+      addedBy: _req.user?.id,
     });
 
     // Delete the local file after upload
-    await fs.promises.unlink(filePath)
+    await fs.promises.unlink(filePath);
 
     res.status(201).json({
       success: true,
       message: "Book created successfully",
       data: newBook,
     });
-
-    
   } catch (error) {
     if (error instanceof z.ZodError) {
       const formattedErrors = error.issues.reduce((acc, issue) => {

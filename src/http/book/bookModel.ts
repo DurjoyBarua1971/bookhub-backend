@@ -59,6 +59,7 @@ const bookSchema = new mongoose.Schema<Book>(
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
       required: [true, "Added by user is required"],
+      index: true,
     }
   },
   {

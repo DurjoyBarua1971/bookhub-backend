@@ -2,6 +2,7 @@ import express from "express";
 import { createBook } from "./bookController";
 import multer from "multer";
 import path from "node:path";
+import authorize from "../../middleware/auth.middleware";
 
 const upload = multer({
   dest: path.resolve(__dirname, "../../../public/uploads"),
@@ -11,6 +12,8 @@ const upload = multer({
 });
 
 const bookRouter = express.Router();
+
+bookRouter.use(authorize);
 
 bookRouter.post(
   "/add",
