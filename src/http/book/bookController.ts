@@ -2,6 +2,8 @@ import { NextFunction, Request, Response } from "express";
 import { bookCreateSchema } from "./bookValidation";
 import { defineError } from "../../config/helper";
 import z from "zod";
+import cloudinary from "../../config/cloudinary";
+import path from "node:path";
 
 export const createBook = async (
   req: Request,
@@ -17,6 +19,23 @@ export const createBook = async (
     }
 
     const parsedData = bookCreateSchema.parse(req.body);
+
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    const coverImageFormat = files.image[0].mimetype.split("/")[-1];
+    const fileName = files.image[0].filename;
+    const filePath = path.resolve(
+      __dirname,
+      "../../../public/uploads",
+      fileName
+    );
+
+    const uploadResult = await cloudinary.uploader.upload(filePath, {
+      filename_override: fileName,
+      folder: "Book Covers",
+      format: coverImageFormat,
+    });
+
+    console.log("Upload result:", uploadResult);
 
     res.status(201).json({
       success: true,
