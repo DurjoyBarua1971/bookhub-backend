@@ -4,15 +4,17 @@ import { defineError } from "../../config/helper";
 import z from "zod";
 import cloudinary from "../../config/cloudinary";
 import path from "node:path";
+import fs from "node:fs";
+import Book from "./bookModel";
+
 
 export const createBook = async (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  console.log("Received request to create book");
-  console.log(req.files);
   try {
+
     req.body = JSON.parse(req.body.data || "{}");
     if (!req.body || Object.keys(req.body).length === 0) {
       throw defineError("Request body cannot be empty", 400);
@@ -21,6 +23,9 @@ export const createBook = async (
     const parsedData = bookCreateSchema.parse(req.body);
 
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    if (!files.image || files.image.length === 0) {
+      throw defineError("Image file is required", 400);
+    }
     const coverImageFormat = files.image[0].mimetype.split("/")[-1];
     const fileName = files.image[0].filename;
     const filePath = path.resolve(
@@ -35,15 +40,22 @@ export const createBook = async (
       format: coverImageFormat,
     });
 
-    console.log("Upload result:", uploadResult);
+    const newBook = await Book.create({
+      ...parsedData,
+      coverImageUrl: uploadResult.secure_url,
+      addedBy: '6878e152c81d7f8104ad7516'
+    });
+
+    // Delete the local file after upload
+    await fs.promises.unlink(filePath)
 
     res.status(201).json({
       success: true,
       message: "Book created successfully",
-      data: parsedData,
+      data: newBook,
     });
 
-    const {} = parsedData;
+    
   } catch (error) {
     if (error instanceof z.ZodError) {
       const formattedErrors = error.issues.reduce((acc, issue) => {

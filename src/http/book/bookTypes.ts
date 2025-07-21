@@ -1,4 +1,6 @@
-export type Genre = 'Fiction' | 'Non-Fiction';
+import { Types } from "mongoose";
+
+export type Genre = "Fiction" | "Non-Fiction";
 
 export interface Book {
   _id: string;
@@ -13,4 +15,5 @@ export interface Book {
   discountStartDate?: Date;
   discountEndDate?: Date;
   quantity: number;
+  addedBy: Types.ObjectId;
 }

@@ -55,6 +55,11 @@ const bookSchema = new mongoose.Schema<Book>(
       required: [true, "Quantity is required"],
       min: [0, "Quantity must be a non-negative number"],
     },
+    addedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Added by user is required"],
+    }
   },
   {
     timestamps: true,
