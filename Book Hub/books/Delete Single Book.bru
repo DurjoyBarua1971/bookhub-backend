@@ -1,0 +1,11 @@
+meta {
+  name: Delete Single Book
+  type: http
+  seq: 2
+}
+
+delete {
+  url: http://localhost:5500/api/books/687e09fd015c248b8b7ff932
+  body: multipartForm
+  auth: inherit
+}

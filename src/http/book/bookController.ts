@@ -1,12 +1,18 @@
 import { NextFunction, Request, Response } from "express";
 import { bookCreateSchema, bookUpdateSchema } from "./bookValidation";
-import { defineError } from "../../config/helper";
+import { validateRequestBody, handleZodError } from "../../config/helper";
 import z from "zod";
 import cloudinary from "../../config/cloudinary";
 import path from "node:path";
 import fs from "node:fs";
-import Book from "./bookModel";
 import { AuthRequest } from "../../middleware/auth.middleware";
+import {
+  createBookService,
+  updateBookService,
+  deleteBookService,
+  getBooksService,
+  getBookService,
+} from "./bookService";
 
 export const createBook = async (
   req: Request,
@@ -15,17 +21,17 @@ export const createBook = async (
 ) => {
   try {
     req.body = JSON.parse(req.body.data || "{}");
-    if (!req.body || Object.keys(req.body).length === 0) {
-      throw defineError("Request body cannot be empty", 400);
-    }
+    validateRequestBody(req.body);
 
     const parsedData = bookCreateSchema.parse(req.body);
 
+    // Handle file upload
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     if (!files.image || files.image.length === 0) {
-      throw defineError("Image file is required", 400);
+      throw new Error("Image file is required");
     }
-    const coverImageFormat = files.image[0].mimetype.split("/")[-1];
+
+    const coverImageFormat = files.image[0].mimetype.split("/")[1];
     const fileName = files.image[0].filename;
     const filePath = path.resolve(
       __dirname,
@@ -41,15 +47,12 @@ export const createBook = async (
 
     const _req = req as AuthRequest;
 
-    const newBook = await Book.create({
+    const newBook = await createBookService({
       ...parsedData,
       coverImageUrl: uploadResult.secure_url,
-      addedBy: _req.user?.id,
-      organization: _req.user?.organization,
+      addedBy: _req.user!.id,
+      organization: _req.user!.organization!,
     });
-
-    // we don't send the organization field in the response
-    newBook.organization = undefined;
 
     // Delete the local file after upload
     await fs.promises.unlink(filePath);
@@ -61,17 +64,7 @@ export const createBook = async (
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const formattedErrors = error.issues.reduce((acc, issue) => {
-        const field = issue.path[0] as string;
-        acc[field] = issue.message;
-        return acc;
-      }, {} as Record<string, string>);
-
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: formattedErrors,
-      });
+      return handleZodError(error, res);
     }
     next(error);
   }
@@ -84,31 +77,25 @@ export const updateBook = async (
 ) => {
   try {
     const bookId = req.params.id;
-
     const _req = req as AuthRequest;
-    const organization = _req.user?.organization;
-
-    const book = await Book.findOne({ _id: bookId, organization });
-
-    if (!book) {
-      throw defineError("Book not found", 404);
-    }
+    const organization = _req.user!.organization!;
 
     req.body = JSON.parse(req.body.data || "{}");
-
     const parsedData = bookUpdateSchema.parse(req.body);
-    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     let coverImageUrl = "";
 
+    // Handle image upload if provided
     if (files.image && files.image.length > 0) {
-      const coverImageFormat = files.image[0].mimetype.split("/")[-1];
+      const coverImageFormat = files.image[0].mimetype.split("/")[1];
       const fileName = files.image[0].filename;
       const filePath = path.resolve(
         __dirname,
         "../../../public/uploads",
         fileName
       );
+
       const uploadResult = await cloudinary.uploader.upload(filePath, {
         filename_override: fileName,
         folder: "Book Covers",
@@ -117,59 +104,38 @@ export const updateBook = async (
 
       coverImageUrl = uploadResult.secure_url;
       await fs.promises.unlink(filePath);
+    }
 
-      // Remove the old cover image
-      if (book.coverImageUrl) {
-        const publicId = book.coverImageUrl.split("/").pop()?.split(".")[0];
-        if (publicId) {
-          try {
-            await cloudinary.uploader.destroy(`Book Covers/${publicId}`);
-          } catch (error) {
-            console.error("Error deleting old cover image:", error);
-          }
+    const updateData = coverImageUrl
+      ? { ...parsedData, coverImageUrl }
+      : parsedData;
+
+    const { updatedBook, oldBook } = await updateBookService(
+      bookId,
+      organization,
+      updateData
+    );
+
+    // Remove old cover image if new one was uploaded
+    if (coverImageUrl && oldBook.coverImageUrl) {
+      const publicId = oldBook.coverImageUrl.split("/").pop()?.split(".")[0];
+      if (publicId) {
+        try {
+          await cloudinary.uploader.destroy(`Book Covers/${publicId}`);
+        } catch (error) {
+          console.error("Error deleting old cover image:", error);
         }
       }
     }
 
-    const updateBook = await Book.findByIdAndUpdate(
-      {
-        _id: bookId,
-        organization,
-      },
-      {
-        ...parsedData,
-        coverImageUrl: coverImageUrl || book.coverImageUrl,
-      },
-      {
-        new: true,
-      }
-    );
-
-    if (!updateBook) {
-      throw defineError("Failed to update book", 500);
-    }
-
-    // we don't send the organization field in the response
-    updateBook.organization = undefined;
-
     res.status(200).json({
       success: true,
       message: "Book updated successfully",
-      data: updateBook,
+      data: updatedBook,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
-      const formattedErrors = error.issues.reduce((acc, issue) => {
-        const field = issue.path[0] as string;
-        acc[field] = issue.message;
-        return acc;
-      }, {} as Record<string, string>);
-
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: formattedErrors,
-      });
+      return handleZodError(error, res);
     }
     next(error);
   }
@@ -182,13 +148,10 @@ export const deleteBook = async (
 ) => {
   try {
     const _req = req as AuthRequest;
-    const organization = _req.user?.organization;
-
+    const organization = _req.user!.organization!;
     const bookId = req.params.id;
-    const book = await Book.findOne({ _id: bookId, organization });
-    if (!book) {
-      throw defineError("Book not found", 404);
-    }
+
+    const book = await deleteBookService(bookId, organization);
 
     // Remove the cover image from Cloudinary
     if (book.coverImageUrl) {
@@ -202,26 +165,11 @@ export const deleteBook = async (
       }
     }
 
-    await Book.deleteOne({ _id: bookId });
-
     res.status(200).json({
       success: true,
       message: "Book deleted successfully",
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      const formattedErrors = error.issues.reduce((acc, issue) => {
-        const field = issue.path[0] as string;
-        acc[field] = issue.message;
-        return acc;
-      }, {} as Record<string, string>);
-
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: formattedErrors,
-      });
-    }
     next(error);
   }
 };
@@ -233,72 +181,33 @@ export const getBooks = async (
 ) => {
   try {
     const _req = req as AuthRequest;
-    const organization = _req.user?.organization;
+    const organization = _req.user!.organization!;
 
     const { title, genre, author, minPrice, maxPrice, inStock } = req.query;
 
-    const query: any = { organization };
+    const filters = {
+      organization,
+      title: title as string,
+      genre: genre as string,
+      author: author as string,
+      minPrice: minPrice ? Number(minPrice) : undefined,
+      maxPrice: maxPrice ? Number(maxPrice) : undefined,
+      inStock: inStock !== undefined ? inStock === "true" : undefined,
+    };
 
-    if (title) {
-      query.title = { $regex: title, $options: "i" };
-    }
+    const pagination = {
+      page: Number(req.query.page) || 1,
+      limit: 10,
+    };
 
-    if (genre) {
-      query.genre = genre;
-    }
-
-    if (author) {
-      query.author = { $regex: author, $options: "i" };
-    }
-
-    if (minPrice || maxPrice) {
-      query.sellingPrice = {};
-      if (minPrice) query.sellingPrice.$gte = Number(minPrice);
-      if (maxPrice) query.sellingPrice.$lte = Number(maxPrice);
-    }
-
-    if (inStock !== undefined) {
-      query.quantity = inStock === "true" ? { $gt: 0 } : 0;
-    }
-
-    const page = Number(req.query.page) || 1;
-    const limit = 10;
-    const sortBy = (req.query.sortBy as string) || "createdAt";
-    const sortOrder = req.query.sortOrder === "asc" ? 1 : -1;
-
-    const books = await Book.find(query)
-      .sort({ [sortBy]: sortOrder })
-      .skip((page - 1) * limit)
-      .limit(limit)
-      .select("-organization")
-      .populate("addedBy", "name");
-
-    const total = await Book.countDocuments(query);
+    const result = await getBooksService(filters, pagination);
 
     res.status(200).json({
       success: true,
-      data: books,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
-      },
+      data: result.books,
+      pagination: result.pagination,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      const formattedErrors = error.issues.reduce((acc, issue) => {
-        const field = issue.path[0] as string;
-        acc[field] = issue.message;
-        return acc;
-      }, {} as Record<string, string>);
-
-      return res.status(400).json({
-        success: false,
-        message: "Validation failed",
-        errors: formattedErrors,
-      });
-    }
     next(error);
   }
 };
@@ -308,23 +217,18 @@ export const getBook = async (
   res: Response,
   next: NextFunction
 ) => {
-  const bookId = req.params.id;
-  const _req = req as AuthRequest;
-  const organization = _req.user?.organization;
+  try {
+    const bookId = req.params.id;
+    const _req = req as AuthRequest;
+    const organization = _req.user!.organization!;
 
-  const book = await Book.findOne({ _id: bookId, organization })
-    .select("-organization")
-    .populate("addedBy", "name");
+    const book = await getBookService(bookId, organization);
 
-  if (!book) {
-    return res.status(404).json({
-      success: false,
-      message: "Book not found",
+    res.status(200).json({
+      success: true,
+      data: book,
     });
+  } catch (error) {
+    next(error);
   }
-
-  res.status(200).json({
-    success: true,
-    data: book,
-  });
 };

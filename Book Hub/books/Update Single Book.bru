@@ -1,0 +1,20 @@
+meta {
+  name: Update Single Book
+  type: http
+  seq: 2
+}
+
+patch {
+  url: http://localhost:5500/api/books/687f685c8d0f597a22cb6aa1
+  body: multipartForm
+  auth: inherit
+}
+
+body:multipart-form {
+  data: '''
+    {
+        "description": "The Most Selling Book Ever"
+    }
+  '''
+  ~image: @file(C:\Users\BS01415\Pictures\Project\5.avif)
+}
