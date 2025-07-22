@@ -16,7 +16,7 @@ export const bookCreateSchema = z
       .trim()
       .min(10, "Description must be at least 10 characters")
       .max(500, "Description must not exceed 500 characters"),
-    authorName: z
+    author: z
       .string()
       .trim()
       .min(3, "Author name must be at least 3 characters")
@@ -88,7 +88,7 @@ export const bookUpdateSchema = z
       .min(10, "Description must be at least 10 characters")
       .max(500, "Description must not exceed 500 characters")
       .optional(),
-    authorName: z
+    author: z
       .string()
       .trim()
       .min(3, "Author name must be at least 3 characters")

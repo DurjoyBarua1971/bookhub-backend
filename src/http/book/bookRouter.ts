@@ -28,20 +28,6 @@ bookRouter.patch(
   updateBook
 );
 
-/*
-### **Search & Filter Books**
-
-- **Searchable by**:
-    - Title
-    - Author
-    - Genre
-- **Filter options include**:
-    - Price Range (min-max)
-    - Stock Status (In Stock / Out of Stock)
-    - Discounted Books Only
-
-*/
-
 bookRouter.get('/', getBooks)
 bookRouter.get("/:id", getBook);
 

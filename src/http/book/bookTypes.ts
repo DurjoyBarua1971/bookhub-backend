@@ -7,7 +7,7 @@ export interface Book {
   title: string;
   genre: Genre;
   description: string;
-  authorName: string;
+  author: string;
   coverImageUrl: string;
   sellingPrice: number;
   buyingPrice: number;

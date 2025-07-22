@@ -22,7 +22,7 @@ const bookSchema = new mongoose.Schema<Book>(
       minlength: 10,
       maxlength: 500,
     },
-    authorName: {
+    author: {
       type: String,
       required: [true, "Author name is required"],
       trim: true,
