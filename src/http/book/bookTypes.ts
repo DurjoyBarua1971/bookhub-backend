@@ -3,7 +3,7 @@ import { Types } from "mongoose";
 export type Genre = "Fiction" | "Non-Fiction";
 
 export interface Book {
-  _id: string;
+  _id: Types.ObjectId;
   title: string;
   genre: Genre;
   description: string;
@@ -16,4 +16,5 @@ export interface Book {
   discountEndDate?: Date;
   quantity: number;
   addedBy: Types.ObjectId;
+  organization?: Types.ObjectId;
 }

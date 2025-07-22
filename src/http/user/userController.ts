@@ -36,15 +36,18 @@ export const createUser = async (
       name,
       email,
       password: hashedPassword,
+      role: 41, // Default role for user who is registering
+      Organization: null, // Default organization is null
     });
 
-    const { password: fk, ...userResponse } = newUser.toObject();
+    // ✅ Now Assigning organization id as a admin id
+    newUser.organization = newUser._id;
+    await newUser.save();
 
     // ✅ Success response
     res.status(201).json({
       success: true,
       message: "User created successfully",
-      data: userResponse,
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -96,6 +99,8 @@ export const loginUser = async (
     const token = jwt.sign(
       {
         id: user._id,
+        role: user.role,
+        organization: user.organization,
       },
       JWT_SECRET,
       {

@@ -60,7 +60,13 @@ const bookSchema = new mongoose.Schema<Book>(
       ref: "User",
       required: [true, "Added by user is required"],
       index: true,
-    }
+    },
+    organization: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Organization",
+      default: null,
+      index: true,
+    },
   },
   {
     timestamps: true,
