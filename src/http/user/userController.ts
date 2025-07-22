@@ -99,7 +99,7 @@ export const loginUser = async (
       },
       JWT_SECRET,
       {
-        expiresIn: "1h",
+        expiresIn: "3h",
       }
     );
 
