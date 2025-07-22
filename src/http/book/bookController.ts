@@ -45,6 +45,7 @@ export const createBook = async (
       ...parsedData,
       coverImageUrl: uploadResult.secure_url,
       addedBy: _req.user?.id,
+      organization: _req.user?.organization,
     });
 
     // Delete the local file after upload
@@ -79,8 +80,14 @@ export const updateBook = async (
   next: NextFunction
 ) => {
   try {
+
     const bookId = req.params.id;
-    const book = await Book.findOne({ _id: bookId });
+
+    const _req = req as AuthRequest;
+    const organization = _req.user?.organization;
+
+    const book = await Book.findOne({ _id: bookId, organization });
+
     if (!book) {
       throw defineError("Book not found", 404);
     }
@@ -88,9 +95,10 @@ export const updateBook = async (
     req.body = JSON.parse(req.body.data || "{}");
 
     const parsedData = bookUpdateSchema.parse(req.body);
-
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+
     let coverImageUrl = "";
+
     if (files.image && files.image.length > 0) {
       const coverImageFormat = files.image[0].mimetype.split("/")[-1];
       const fileName = files.image[0].filename;
@@ -99,14 +107,15 @@ export const updateBook = async (
         "../../../public/uploads",
         fileName
       );
-
       const uploadResult = await cloudinary.uploader.upload(filePath, {
         filename_override: fileName,
         folder: "Book Covers",
         format: coverImageFormat,
       });
+
       coverImageUrl = uploadResult.secure_url;
       await fs.promises.unlink(filePath);
+
       // Remove the old cover image
       if (book.coverImageUrl) {
         const publicId = book.coverImageUrl.split("/").pop()?.split(".")[0];
@@ -120,11 +129,10 @@ export const updateBook = async (
       }
     }
 
-    const _req = req as AuthRequest;
-
     const updateBook = await Book.findByIdAndUpdate(
       {
         _id: bookId,
+        organization,
       },
       {
         ...parsedData,
