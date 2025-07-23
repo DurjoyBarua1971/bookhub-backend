@@ -1,39 +1,12 @@
 import Book from "./bookModel";
 import { defineError } from "../../config/helper";
-
-export interface CreateBookData {
-  title: string;
-  genre: "Fiction" | "Non-Fiction";
-  description: string;
-  author: string;
-  sellingPrice: number;
-  buyingPrice: number;
-  discountPrice?: number;
-  discountStartDate?: Date;
-  discountEndDate?: Date;
-  quantity: number;
-  coverImageUrl: string;
-  addedBy: string;
-  organization: string;
-}
-
-export interface UpdateBookData
-  extends Partial<Omit<CreateBookData, "addedBy" | "organization">> {}
-
-export interface BookFilters {
-  title?: string;
-  genre?: string;
-  author?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  inStock?: boolean;
-  organization: string;
-}
-
-export interface PaginationOptions {
-  page: number;
-  limit: number;
-}
+import {
+  BookFilters,
+  CreateBookData,
+  PaginationOptions,
+  UpdateBookData,
+} from "./bookTypes";
+import mongoose, { Types } from "mongoose";
 
 export const createBookService = async (bookData: CreateBookData) => {
   const newBook = await Book.create(bookData);
@@ -143,4 +116,72 @@ export const getBookService = async (bookId: string, organization: string) => {
   }
 
   return book;
+};
+
+export const getDashboardStatsService = async (organization: string) => {
+  const [statsAggregation, recentBooks] = await Promise.all([
+    Book.aggregate([
+      { $match: { organization: new Types.ObjectId(organization) } },
+      {
+        $facet: {
+          totalBooks: [{ $count: "count" }],
+          booksInStock: [
+            { $match: { quantity: { $gt: 0 } } },
+            { $count: "count" },
+          ],
+          outOfStockBooks: [{ $match: { quantity: 0 } }, { $count: "count" }],
+          booksByGenre: [{ $group: { _id: "$genre", count: { $sum: 1 } } }],
+          inventoryValue: [
+            {
+              $group: {
+                _id: null,
+                total: { $sum: { $multiply: ["$buyingPrice", "$quantity"] } },
+              },
+            },
+          ],
+        },
+      },
+      {
+        $project: {
+          totalBooks: { $arrayElemAt: ["$totalBooks.count", 0] },
+          booksInStock: { $arrayElemAt: ["$booksInStock.count", 0] },
+          outOfStockBooks: { $arrayElemAt: ["$outOfStockBooks.count", 0] },
+          booksByGenre: {
+            $arrayToObject: {
+              $map: {
+                input: "$booksByGenre",
+                as: "genre",
+                in: { k: "$$genre._id", v: "$$genre.count" },
+              },
+            },
+          },
+          totalInventoryValue: { $arrayElemAt: ["$inventoryValue.total", 0] },
+        },
+      },
+    ]),
+    // Fetch recent books in parallel
+    Book.find({ organization })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .select("title author createdAt coverImageUrl")
+      .populate("addedBy", "name")
+      .lean(), // Use lean() for faster query execution
+  ]);
+
+  const stats = statsAggregation[0] || {
+    totalBooks: 0,
+    booksInStock: 0,
+    outOfStockBooks: 0,
+    booksByGenre: {},
+    totalInventoryValue: 0,
+  };
+
+  return {
+    totalBooks: stats.totalBooks || 0,
+    booksInStock: stats.booksInStock || 0,
+    outOfStockBooks: stats.outOfStockBooks || 0,
+    booksByGenre: stats.booksByGenre || {},
+    totalInventoryValue: stats.totalInventoryValue || 0,
+    recentBooks,
+  };
 };

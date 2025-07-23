@@ -12,6 +12,7 @@ import {
   deleteBookService,
   getBooksService,
   getBookService,
+  getDashboardStatsService,
 } from "./bookService";
 
 export const createBook = async (
@@ -227,6 +228,26 @@ export const getBook = async (
     res.status(200).json({
       success: true,
       data: book,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const getDashboardStats = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const _req = req as AuthRequest;
+    const organization = _req.user!.organization!;
+    const stats = await getDashboardStatsService(organization);
+
+    res.status(200).json({
+      success: true,
+      message: "Dashboard stats fetched successfully",
+      data: stats,
     });
   } catch (error) {
     next(error);
